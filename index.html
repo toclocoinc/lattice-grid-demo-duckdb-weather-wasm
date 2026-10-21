@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>US daily weather, 2025: millions of rows, all in your browser</title>
+    <meta
+      name="description"
+      content="Every 2025 daily reading from US weather stations, 8.7 million station-days, queried in the browser. DuckDB-Wasm reads a Parquet file in byte ranges and Lattice Grid turns every filter, sort, group and chart into SQL. No backend. NOAA GHCN-Daily, public domain."
+    />
+    <link rel="icon" href="data:," />
+    <!-- The calendar chart module imports the charts module by its package name. -->
+    <script type="importmap">
+      {
+        "imports": {
+          "@toclocoinc/lattice-grid/modules/charts": "./node_modules/@toclocoinc/lattice-grid/modules/charts.esm.min.js"
+        }
+      }
+    </script>
+    <link rel="stylesheet" href="./node_modules/@toclocoinc/lattice-grid/lattice-grid.min.css" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main id="app">
+      <div class="loading">
+        <h1>US daily weather, 2025</h1>
+        <p class="loading-message">Starting...</p>
+      </div>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "file": "data/weather-2025.parquet",
+  "bytes": 39028193,
+  "megabytes": 37.22,
+  "sha256": "cf86f95d99a8ceb21d97b35266449c18ac56e93fb838d5f4a9876fb7162eb4e0",
+  "rows": 8759064,
+  "row_groups": 88,
+  "row_group_size": 100000,
+  "stations": 32936,
+  "states": 51,
+  "first_date": "2025-01-01",
+  "last_date": "2025-12-31",
+  "readings": {
+    "tmax": 2605576,
+    "tmin": 2601944,
+    "prcp": 8127967,
+    "snow": 5494376
+  },
+  "source": "https://noaa-ghcn-pds.s3.amazonaws.com/csv.gz/by_year/2025.csv.gz",
+  "stations_source": "https://noaa-ghcn-pds.s3.amazonaws.com/ghcnd-stations.txt",
+  "built": "2026-10-21"
+}
