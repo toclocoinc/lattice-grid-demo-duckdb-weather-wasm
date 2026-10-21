@@ -34,7 +34,6 @@ const GROUPINGS = [
   { id: '', label: 'No grouping', by: [] },
   { id: 'state', label: 'By state', by: ['state'] },
   { id: 'month', label: 'By month', by: ['month'] },
-  { id: 'state-month', label: 'By state, then month', by: ['state', 'month'] },
 ];
 
 export function buildDashboard({
@@ -141,6 +140,11 @@ export function buildDashboard({
   toInput.min = '2025-01-01';
   toInput.max = '2025-12-31';
   toInput.dataset.control = 'to';
+  const searchInput = el('input', 'input');
+  searchInput.type = 'search';
+  searchInput.placeholder = 'Station name or id';
+  searchInput.setAttribute('aria-label', 'Search stations');
+  searchInput.dataset.control = 'search';
   const groupSelect = el('select', 'input');
   groupSelect.dataset.control = 'group';
   for (const g of GROUPINGS) groupSelect.append(new Option(g.label, g.id));
@@ -150,6 +154,7 @@ export function buildDashboard({
     field('State', stateSelect),
     field('From', fromInput),
     field('To', toInput),
+    field('Search', searchInput),
     field('Group', groupSelect),
   );
 
@@ -174,6 +179,8 @@ export function buildDashboard({
   clearButton.addEventListener('click', () => {
     built.filters = { state: '', from: '', to: '', preset: '' };
     stateSelect.value = '';
+    searchInput.value = '';
+    built.grid?.filters.quick('');
     fromInput.value = '';
     toInput.value = '';
     applyFilters();
@@ -206,6 +213,11 @@ export function buildDashboard({
   stateSelect.addEventListener('change', () => { built.filters.state = stateSelect.value; applyFilters(); });
   fromInput.addEventListener('change', () => { built.filters.from = fromInput.value; applyFilters(); });
   toInput.addEventListener('change', () => { built.filters.to = toInput.value; applyFilters(); });
+  let searchTimer = 0;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => built.grid?.filters.quick(searchInput.value.trim()), 250);
+  });
   groupSelect.addEventListener('change', () => {
     const choice = GROUPINGS.find((g) => g.id === groupSelect.value) ?? GROUPINGS[0];
     built.grid?.columns.group(choice.by);
@@ -272,6 +284,7 @@ export function buildDashboard({
     connection: recordSql(connection),
     from: `read_parquet('${FILE}')`,
     fields: GRID_FIELDS,
+    quickColumns: ['station_name', 'station_id'],
   });
   const source = LG.createPushdownSource({
     adapter,
