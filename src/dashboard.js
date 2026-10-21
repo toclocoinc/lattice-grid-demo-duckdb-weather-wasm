@@ -21,7 +21,6 @@ import {
 } from './weather.js';
 import { readRangeAccounting } from './duckdb.js';
 import { useLocal } from './config.js';
-import { makeFacetProvider } from './facets.js';
 
 const el = (tag, className, text) => {
   const node = document.createElement(tag);
@@ -304,7 +303,7 @@ export function buildDashboard({
       : COLUMNS,
     source,
     selection: 'single',
-    facets: { enabled: true, provider: makeFacetProvider(source) },
+    facets: { enabled: true },
     toolPanel: { side: 'right', panels: ['filters', 'columns'] },
     showTotalInHeader: true,
     groupFooter: true,
