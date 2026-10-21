@@ -54,12 +54,10 @@ export function makeFacetProvider(source) {
   function cut(colId, pairs, wanted) {
     const spec = KINDS[colId];
     const present = pairs.filter(([v]) => v != null);
-    const hasNull = pairs.some(([v]) => v == null);
 
     if (spec.kind === 'category') {
       const values = present.map(([v]) => String(v)).sort();
       const buckets = values.map((value) => ({ value }));
-      if (hasNull) buckets.push({ null: true });
       return { kind: 'category', buckets, cardinality: values.length };
     }
 
@@ -75,7 +73,6 @@ export function makeFacetProvider(source) {
         m += 1;
         if (m > 11) { m = 0; y += 1; }
       }
-      if (hasNull) buckets.push({ null: true });
       return { kind: 'date', buckets, granularity: 'month', min: days[0], max: days[days.length - 1] };
     }
 
@@ -103,7 +100,6 @@ export function makeFacetProvider(source) {
     if (lowest < low) buckets.push({ from: lowest, to: low });
     for (let i = 0; i < middle; i += 1) buckets.push({ from: low + step * i, to: low + step * (i + 1) });
     if (max > low + step * middle) buckets.push({ from: low + step * middle, to: max });
-    if (hasNull) buckets.push({ null: true });
     return { kind: 'numeric', buckets, min: lowest, max };
   }
 

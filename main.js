@@ -11,7 +11,7 @@ import * as LG from './node_modules/@toclocoinc/lattice-grid/lattice-grid.esm.mi
 import { createChart } from './node_modules/@toclocoinc/lattice-grid/modules/charts.esm.min.js';
 import './node_modules/@toclocoinc/lattice-grid/modules/chart-calendar.esm.min.js';
 import { DEMO_LICENCE } from './src/licence.js';
-import { startDuckDB, recordingConnection } from './src/duckdb.js';
+import { startDuckDB, recordingConnection, resetRangeAccounting } from './src/duckdb.js';
 import { dataUrl } from './src/config.js';
 import { buildDashboard } from './src/dashboard.js';
 
@@ -69,6 +69,8 @@ async function start() {
   const started = performance.now();
   const [line] = panel(TITLE, 'Starting DuckDB in your browser...');
   try {
+    /* Clear the local server's byte tally so the readout covers this page load only. */
+    await resetRangeAccounting();
     const { connection, version, close } = await startDuckDB((m) => { line.textContent = m; });
     line.textContent = 'Reading the Parquet file...';
     const facts = await readFacts();

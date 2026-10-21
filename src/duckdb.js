@@ -31,6 +31,8 @@ export async function startDuckDB(onStatus = () => {}) {
 
   const connection = await db.connect();
   await connection.query('LOAD httpfs;');
+  await connection.query('SET enable_http_metadata_cache = true;');
+  await connection.query('SET enable_object_cache = true;');
 
   const version = (await readOne(connection, 'SELECT version() AS v'))?.v ?? 'unknown';
 
@@ -117,5 +119,16 @@ export async function readRangeAccounting() {
     return body && Array.isArray(body.files) ? body : null;
   } catch {
     return null;
+  }
+}
+
+/** Clear the server's range tally, so the next measurement starts from zero. */
+export async function resetRangeAccounting() {
+  if (!hasRangeAccounting()) return false;
+  try {
+    await fetch('./__ranges', { method: 'POST', cache: 'no-store' });
+    return true;
+  } catch {
+    return false;
   }
 }

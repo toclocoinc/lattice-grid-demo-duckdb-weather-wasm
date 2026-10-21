@@ -41,6 +41,7 @@ export function buildDashboard({
   root, LG, createChart, connection, recordSql, sqlLog, duckdbVersion, facts, dataUrl,
 }) {
   const FILE = dataUrl;
+  const DATA_FILE = new URL(FILE).pathname.split('/').pop();
 
   const built = {
     ready: false,
@@ -54,9 +55,10 @@ export function buildDashboard({
     matchCount: null,
     totalRows: facts?.rows ?? null,
     plan: null,
-    lastBurst: null,
+    timings: {},
     filters: { state: '', from: '', to: '', preset: '' },
     duckdbVersion,
+    connection,
   };
 
   /* ------------------------------------------------------------------ */
@@ -68,7 +70,7 @@ export function buildDashboard({
 
   const header = el('header', 'masthead');
   const titleRow = el('div', 'title-row');
-  titleRow.append(el('h1', null, `${facts ? (facts.rows / 1e6).toFixed(1) : 'Millions of'} million days of US weather, all in your browser`.replace(/^Millions of million/, 'Millions of')));
+  titleRow.append(el('h1', null, `${facts ? `${(facts.rows / 1e6).toFixed(1)} million` : 'Millions of'} station-days of US weather, all in your browser`));
   const themeButton = el('button', 'theme-toggle', 'Dark mode');
   themeButton.type = 'button';
   themeButton.setAttribute('aria-pressed', 'false');
@@ -214,31 +216,35 @@ export function buildDashboard({
   /* ------------------------------------------------------------------ */
 
   /*
-   * A "burst" is the statements one interaction sets off: they finish within a
-   * short gap of each other. Its wall time is the figure shown, because that is
-   * what the reader waited for; the statement count says how much was asked.
+   * What each kind of statement last cost, read from the statements DuckDB
+   * ran: the page of rows, the count over every matching row (which is what
+   * evaluates the filter against the whole file) and the grouped queries behind
+   * the chart, the group rows and the header histograms. Timed in the browser,
+   * from the call to the result, so a statement that waited for the engine
+   * to finish another one shows the wait too.
    */
-  const burst = { start: 0, end: 0, statements: 0, rowsOut: 0 };
+  const timings = {};
+  const kindOf = (sql) => {
+    if (/\bGROUP BY\b/i.test(sql)) return 'group';
+    if (/\bLIMIT\b/i.test(sql)) return 'page';
+    if (/^\s*SELECT\s+count\(\*\)/i.test(sql)) return 'count';
+    return null;
+  };
   window.addEventListener('weather:sql', (event) => {
-    const { ms, rows } = event.detail;
-    const now = performance.now();
-    if (now - burst.end > 400) {
-      burst.start = now - ms;
-      burst.statements = 0;
-      burst.rowsOut = 0;
-    }
-    burst.end = now;
-    burst.statements += 1;
-    burst.rowsOut += rows;
-    built.lastBurst = { ms: Math.round(burst.end - burst.start), statements: burst.statements, rowsOut: burst.rowsOut };
+    const { sql, ms, rows } = event.detail;
+    const kind = kindOf(sql);
+    if (!kind) return;
+    timings[kind] = { ms, rows };
+    built.timings = { ...timings };
     renderLive();
   });
 
   let rangeTally = null;
   async function pollRanges() {
     const tally = await readRangeAccounting();
-    const file = tally?.files?.find((f) => f.path.endsWith(facts ? facts.file.split('/').pop() : '.parquet'));
-    rangeTally = file ?? null;
+    const name = DATA_FILE;
+    rangeTally = tally?.files?.find((f) => f.path.endsWith(name)) ?? null;
+    built.rangeTally = rangeTally;
     renderLive();
   }
 
@@ -249,11 +255,11 @@ export function buildDashboard({
     if (matched != null) {
       parts.push(`<b data-live-matched>${fmt.int(matched)}</b>${total ? ` of ${fmt.int(total)}` : ''} station-days match`);
     }
-    if (built.lastBurst) {
-      parts.push(`last interaction: <b data-live-ms>${fmt.ms(built.lastBurst.ms)}</b> across ${built.lastBurst.statements} ${built.lastBurst.statements === 1 ? 'query' : 'queries'}`);
-    }
+    if (timings.count) parts.push(`rows scanned: <b>${fmt.int(matched)}</b> in <b data-live-count-ms>${fmt.ms(timings.count.ms)}</b>`);
+    if (timings.page) parts.push(`page of rows: <b data-live-page-ms>${fmt.ms(timings.page.ms)}</b>`);
+    if (timings.group) parts.push(`chart and groups: <b data-live-group-ms>${fmt.ms(timings.group.ms)}</b>`);
     if (rangeTally) {
-      parts.push(`<b>${fmt.int(rangeTally.partial)}</b> range reads, ${fmt.bytes(rangeTally.bytes)} of a ${fmt.bytes(rangeTally.size)} file`);
+      parts.push(`<b data-live-reads>${fmt.int(rangeTally.partial)}</b> range reads, ${fmt.bytes(rangeTally.bytes)} of a ${fmt.bytes(rangeTally.size)} file`);
     }
     liveLine.innerHTML = parts.map((p) => `<span>${p}</span>`).join('');
   }
@@ -276,9 +282,13 @@ export function buildDashboard({
   built.adapter = adapter;
   built.source = source;
 
+  /* On a phone the pinned 210px station column would leave no room for a number. */
+  const phone = window.matchMedia('(max-width: 600px)').matches;
   const grid = LG.createGrid(gridHost, {
     rowKey: 'row_id',
-    columns: COLUMNS,
+    columns: phone
+      ? COLUMNS.map((c) => (c.field === 'station_name' ? { ...c, layout: { width: 150 } } : c))
+      : COLUMNS,
     source,
     selection: 'single',
     facets: { enabled: true, provider: makeFacetProvider(source) },
@@ -286,7 +296,8 @@ export function buildDashboard({
     showTotalInHeader: true,
     groupFooter: true,
     grandTotalRow: 'bottom',
-    groupDefaultExpanded: false,
+    groupDefaultExpanded: 0,
+    autoGroupColumnWidth: 230,
   });
   built.grid = grid;
 
@@ -357,7 +368,9 @@ export function buildDashboard({
   const calendarHint = el('p', 'chart-hint', 'Select a row in the table to see that station’s year here.');
   calendarBox.append(calendarHead, calendarHint);
   const calendarCanvas = el('div', 'calendar-canvas');
-  calendarBox.append(calendarCanvas);
+  const calendarNote = el('p', 'calendar-note');
+  calendarNote.dataset.calendarNote = '';
+  calendarBox.append(calendarCanvas, calendarNote);
 
   let calendarSequence = 0;
   async function showStation(stationId, label) {
@@ -389,6 +402,16 @@ export function buildDashboard({
     built.calendarGrid = LG.createHeadlessGrid({ rowKey: 'row_id', columns, rows });
     built.calendar?.destroy?.();
     calendarCanvas.textContent = '';
+    const read = rows.filter((r) => r[measure] != null);
+    const unit = { tmax_c: '°C', tmin_c: '°C', prcp_mm: 'mm', snow_mm: 'mm' }[measure];
+    const dayLabel = (iso) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    if (read.length) {
+      const hi = read.reduce((a, r) => (r[measure] > a[measure] ? r : a));
+      const lo = read.reduce((a, r) => (r[measure] < a[measure] ? r : a));
+      calendarNote.textContent = `${read.length} days with a reading. Highest: ${hi[measure]} ${unit} on ${dayLabel(hi.day)}. Lowest: ${lo[measure]} ${unit} on ${dayLabel(lo.day)}.`;
+    } else {
+      calendarNote.textContent = 'This station reported no readings of this kind in 2025.';
+    }
     const titles = { tmax_c: 'Daily high, °C', tmin_c: 'Daily low, °C', prcp_mm: 'Daily rain, mm', snow_mm: 'Daily snow, mm' };
     try {
       built.calendar = createChart({
@@ -440,16 +463,19 @@ export function buildDashboard({
   sqlSection.append(sqlHead, sqlPre);
 
   function renderSql() {
-    const recent = sqlLog.slice(-4);
+    /* The most recent statement of each kind, so the panel reads as the story
+       of the last interaction rather than the last four histogram counts. */
+    const latest = (kind, n = 1) => sqlLog.filter((e) => kindOf(e.sql) === kind).slice(-n);
+    const recent = [...latest('page'), ...latest('count'), ...latest('group', 2)];
     if (!recent.length) return;
     sqlPre.textContent = recent.map((e) => {
       const bound = e.params?.length ? `\n-- bound: ${JSON.stringify(e.params, (_, v) => (typeof v === 'bigint' ? String(v) : v))}` : '';
       return `${e.sql.trim().replace(/\s+/g, ' ')}${bound}\n-- ${fmt.int(e.rows)} rows back in ${fmt.ms(e.ms)}`;
     }).join('\n\n');
-    const plan = built.plan;
-    const unpushed = plan?.unpushed ?? [];
-    sqlSummary.textContent = unpushed.length
-      ? `Kept in the browser: ${unpushed.join(', ')}.`
+    const left = built.plan?.residual;
+    const kept = left && [left.filters && 'a filter', left.sort && 'the sort', left.quick && 'the quick search', left.where && 'a predicate'].filter(Boolean);
+    sqlSummary.textContent = kept?.length
+      ? `Kept in the browser: ${kept.join(', ')}.`
       : 'Filter, sort, quick search, paging and grouping all ran in DuckDB; nothing was left for the browser.';
   }
   window.addEventListener('weather:sql', () => { renderSql(); void pollRanges(); });
@@ -459,7 +485,7 @@ export function buildDashboard({
       'Data: NOAA Global Historical Climatology Network – Daily (GHCN-Daily), 2025, US stations, public domain (CC0). '
       + 'Credit: NOAA National Centers for Environmental Information. Values are in °C and millimetres; a reading NOAA flagged as '
       + 'failing a quality check is left out, and a day a station did not report a value is blank.'),
-    el('p', null, `DuckDB-Wasm ${duckdbVersion} · ${useLocal() ? 'data read from this machine' : 'data read from data.latticegrid.dev'}.`),
+    el('p', null, `DuckDB ${duckdbVersion} (WebAssembly) · ${useLocal() ? 'data read from this machine' : 'data read from data.latticegrid.dev'}.`),
   );
 
   /* ------------------------------------------------------------------ */
