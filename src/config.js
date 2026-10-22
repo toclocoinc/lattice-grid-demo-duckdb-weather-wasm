@@ -14,7 +14,7 @@
 export const DATA_NAME = 'weather-2025.parquet';
 
 /** The published location: https://data.latticegrid.dev/duckdb/<demo-name>/ */
-export const REMOTE_BASE = 'https://data.latticegrid.dev/duckdb/lattice-grid-demo-duckdb-weather-wasm/';
+export const REMOTE_BASE = 'https://data.latticegrid.dev/duckdb/lattice-grid-demo-duckdb-weather-wasm/v2/';
 
 /** The same file on a local `tools/serve.mjs`. */
 export const LOCAL_BASE = './data/';

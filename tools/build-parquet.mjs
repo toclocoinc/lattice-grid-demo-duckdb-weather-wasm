@@ -167,7 +167,7 @@ await conn.run(`
     JOIN stations s USING (station_id)
     WHERE s.state IS NOT NULL
     ORDER BY s.state, w.station_id DESC, w.day
-  ) TO '${q(outFile)}' (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE ${ROW_GROUP_SIZE})
+  ) TO '${q(outFile)}' (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE ${ROW_GROUP_SIZE}, WRITE_BLOOM_FILTER false)
 `);
 
 const quoted = q(outFile);

@@ -303,7 +303,7 @@ export function buildDashboard({
       : COLUMNS,
     source,
     selection: 'single',
-    facets: { enabled: true },
+    facets: { enabled: true, blanks: false },
     toolPanel: { side: 'right', panels: ['filters', 'columns'] },
     showTotalInHeader: true,
     groupFooter: true,
