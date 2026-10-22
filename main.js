@@ -7,9 +7,9 @@
  * headless browser's evaluations. `start()` is called and the module finishes.
  */
 
-import * as LG from './node_modules/@toclocoinc/lattice-grid/lattice-grid.esm.min.js';
-import { createChart } from './node_modules/@toclocoinc/lattice-grid/modules/charts.esm.min.js';
-import './node_modules/@toclocoinc/lattice-grid/modules/chart-calendar.esm.min.js';
+import * as LG from 'https://cdn.latticegrid.dev/lattice-grid@1.111.7/lattice-grid.esm.min.js?v=1.111.7-20261022';
+import { createChart } from 'https://cdn.latticegrid.dev/lattice-grid@1.111.7/modules/charts.esm.min.js?v=1.111.7-20261022';
+import 'https://cdn.latticegrid.dev/lattice-grid@1.111.7/modules/chart-calendar.esm.min.js?v=1.111.7-20261022';
 import { DEMO_LICENCE } from './src/licence.js';
 import { startDuckDB, recordingConnection, resetRangeAccounting } from './src/duckdb.js';
 import { dataUrl } from './src/config.js';
