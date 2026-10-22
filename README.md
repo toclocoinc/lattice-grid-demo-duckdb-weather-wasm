@@ -17,6 +17,14 @@ npm start            # http://localhost:<port>/?data=local
 npm run verify       # headless Chrome against the local data
 ```
 
+## Loading
+
+The first visit has three slow steps: the query engine (about 34 MB of WebAssembly, a fifth of that on the wire), starting it, and reading the opening views from the Parquet file. The page says what it is doing at each (`src/loading.js`, `src/duckdb.js`, copied from the SaaS demo):
+
+1. **A status line in the static HTML** (`index.html`): a spinner, one plain-English sentence and a progress bar, on screen from first paint. "Downloading the query engine (about 34 MB, first visit only): n of 34 MB", then "Starting the engine", then "Reading the 2025 weather readings (n of m MB)".
+2. **Real byte counts, no second download.** The engine reports its own download progress. For the Parquet reads, the worker is started through a small wrapper that reports each response size over a `BroadcastChannel`. The total `m` is the compressed size of what the opening views read (the first row group, plus the chart's three columns across the file), taken from `parquet_metadata()`; the bar is hidden where no size is known.
+3. **Every panel has a loading state.** `slot(panel, text)` covers the grid, the temperature chart and the calendar until each has its first answer, so there is never blank space. The page is ready (`window.__demo.ready`) once all of them are drawn.
+
 ## On the page
 
 - Filters: state, date range, search, quick chips for hot days (35 °C and up),

@@ -21,6 +21,7 @@ import {
 } from './weather.js';
 import { readRangeAccounting } from './duckdb.js';
 import { useLocal } from './config.js';
+import { slot } from './loading.js';
 
 const el = (tag, className, text) => {
   const node = document.createElement(tag);
@@ -36,7 +37,7 @@ const GROUPINGS = [
 ];
 
 export function buildDashboard({
-  root, LG, createChart, connection, recordSql, sqlLog, duckdbVersion, facts, dataUrl,
+  root, LG, createChart, connection, recordSql, sqlLog, duckdbVersion, facts, dataUrl, status,
 }) {
   const FILE = dataUrl;
   const DATA_FILE = new URL(FILE).pathname.split('/').pop();
@@ -81,8 +82,10 @@ export function buildDashboard({
   const liveLine = el('p', 'live');
   liveLine.dataset.live = '';
   liveLine.setAttribute('aria-live', 'polite');
+  liveLine.textContent = 'Counting the station-days that match...';
   header.append(liveLine);
   root.append(header);
+  if (status) root.append(status.el);
 
   const controls = el('section', 'controls');
   controls.setAttribute('aria-label', 'Filters and grouping');
@@ -90,7 +93,8 @@ export function buildDashboard({
 
   const gridHost = el('section', 'grid-host');
   gridHost.setAttribute('aria-label', 'Station-days');
-  root.append(gridHost);
+  const gridSlot = slot(gridHost, 'Waiting for the first rows from the Parquet file');
+  root.append(gridSlot.el);
 
   const chartRow = el('section', 'charts');
   chartRow.setAttribute('aria-label', 'Charts');
@@ -245,6 +249,7 @@ export function buildDashboard({
     const { sql, ms, rows } = event.detail;
     const kind = kindOf(sql);
     if (!kind) return;
+    if (kind === 'group' && /\bavg\(/i.test(sql) && /month/i.test(sql)) requestAnimationFrame(() => requestAnimationFrame(() => { chartSlot.hide(); built.chartDrawn = true; }));
     timings[kind] = { ms, rows };
     built.timings = { ...timings };
     renderLive();
@@ -323,6 +328,7 @@ export function buildDashboard({
     }
     built.plan = source.lastPlan?.() ?? null;
     renderLive();
+    if (!query.groupBy?.length) requestAnimationFrame(() => gridSlot.hide());
     return result;
   };
 
@@ -334,7 +340,9 @@ export function buildDashboard({
   chartBox.dataset.chart = 'months';
   const calendarBox = el('div', 'chart-box');
   calendarBox.dataset.chart = 'calendar';
-  chartRow.append(chartBox, calendarBox);
+  const chartSlot = slot(chartBox, 'Waiting for the monthly averages, worked out over every station-day');
+  const calendarSlot = slot(calendarBox, 'Reading one station’s year');
+  chartRow.append(chartSlot.el, calendarSlot.el);
 
   /*
    * Bound to the grid, not to a copy of its rows. The grid holds 200 of
@@ -360,6 +368,8 @@ export function buildDashboard({
     });
   } catch (error) {
     chartBox.append(el('p', 'chart-error', `This chart could not be drawn: ${error.message}`));
+    chartSlot.hide();
+    built.chartDrawn = true;
     console.error('[weather demo] chart', error);
   }
 
@@ -387,6 +397,7 @@ export function buildDashboard({
   let calendarSequence = 0;
   async function showStation(stationId, label) {
     const sequence = ++calendarSequence;
+    calendarSlot.show(`Reading ${label ?? 'the station'}’s year`);
     built.calendarStation = stationId;
     const measure = measureSelect.value;
     const statement = await recordSql(connection).prepare(
@@ -440,6 +451,7 @@ export function buildDashboard({
       calendarCanvas.append(el('p', 'chart-error', `This chart could not be drawn: ${error.message}`));
       console.error('[weather demo] calendar', error);
     }
+    calendarSlot.hide();
   }
   stationSelect.addEventListener('change', () => showStation(stationSelect.value, stationSelect.selectedOptions[0].textContent));
   measureSelect.addEventListener('change', () => showStation(built.calendarStation ?? stationSelect.value, null));
@@ -512,7 +524,7 @@ export function buildDashboard({
     void showStation(CALENDAR_STATIONS[0].id, CALENDAR_STATIONS[0].label);
   })().catch((error) => console.error('[weather demo] states', error));
 
-  built.settled = () => Boolean(grid.rows.count() > 0 && built.matchCount != null && built.calendarRows != null);
+  built.settled = () => Boolean(grid.rows.count() > 0 && built.matchCount != null && built.calendarRows != null && built.chartDrawn === true);
   built.destroy = () => {
     built.chart?.destroy?.();
     built.calendar?.destroy?.();

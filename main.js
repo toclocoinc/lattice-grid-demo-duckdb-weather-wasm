@@ -14,6 +14,8 @@ import { DEMO_LICENCE } from './src/licence.js';
 import { startDuckDB, recordingConnection, resetRangeAccounting } from './src/duckdb.js';
 import { dataUrl } from './src/config.js';
 import { buildDashboard } from './src/dashboard.js';
+import { createStatus, megabytes } from './src/loading.js';
+import { readBytesSql } from './src/weather.js';
 
 /* Applied before anything is drawn: a grid keeps whatever licence was in force when it was built. */
 LG.setLicence(DEMO_LICENCE);
@@ -29,6 +31,7 @@ const recordSql = (connection) => recordingConnection(connection, (entry) => {
   window.dispatchEvent(new CustomEvent('weather:sql', { detail: entry }));
 });
 
+/** The failure screen: replaces everything with what went wrong. */
 function panel(title, ...lines) {
   root.textContent = '';
   const box = document.createElement('div');
@@ -65,18 +68,47 @@ async function readFacts() {
   return null;
 }
 
+/**
+ * How many bytes of the Parquet file the opening views will read: the
+ * compressed size of the columns on screen, from the file's footer (which the
+ * engine fetches anyway). Null when the footer cannot say, so the bar is
+ * dropped rather than guessed.
+ */
+async function expectedBytes(connection, url) {
+  try {
+    const result = await connection.query(readBytesSql(url));
+    return Number(result.toArray()[0]?.toJSON().bytes) || null;
+  } catch { return null; }
+}
+
 async function start() {
   const started = performance.now();
-  const [line] = panel(TITLE, 'Starting DuckDB in your browser...');
+  /* The status line is in index.html, so it is on screen from first paint. */
+  const status = createStatus(root.querySelector('.load-status'));
   try {
     /* Clear the local server's byte tally so the readout covers this page load only. */
     await resetRangeAccounting();
-    const { connection, version, close } = await startDuckDB((m) => { line.textContent = m; });
-    line.textContent = 'Reading the Parquet file...';
-    const facts = await readFacts();
+    const { connection, version, close, reads } = await startDuckDB(
+      (message) => status.set(message),
+      ({ loaded, total }) => status.set(
+        `Downloading the query engine (about ${Math.round(total / 1e6)} MB, first visit only): ${Math.round(loaded / 1e6)} of ${Math.round(total / 1e6)} MB`,
+        loaded / total,
+      ),
+    );
+    status.set('Looking up where the readings sit in the file');
+    const [expected, facts] = await Promise.all([expectedBytes(connection, dataUrl()), readFacts()]);
+    const before = reads.bytes;
+    const line = (read) => {
+      const total = Math.max(expected ?? 0, read);
+      return expected
+        ? [`Reading the 2025 weather readings (${megabytes(read)} of ${megabytes(total)})`, read / total]
+        : [`Reading the 2025 weather readings (${megabytes(read)} so far)`, null];
+    };
+    status.set(...line(0));
+    const stop = reads.onRead((total) => status.set(...line(total - before)));
 
     const built = buildDashboard({
-      root, LG, createChart, connection, recordSql, sqlLog, duckdbVersion: version, facts, dataUrl: dataUrl(),
+      root, LG, createChart, connection, recordSql, sqlLog, duckdbVersion: version, facts, dataUrl: dataUrl(), status,
     });
     window.addEventListener('pagehide', () => { built.destroy(); close(); }, { once: true });
 
@@ -85,6 +117,8 @@ async function start() {
     while (Date.now() < deadline && !built.settled()) {
       await new Promise((r) => setTimeout(r, 150));
     }
+    stop();
+    status.hide();
     built.ready = true;
     built.bootMs = Math.round(performance.now() - started);
     window.__demo = built;

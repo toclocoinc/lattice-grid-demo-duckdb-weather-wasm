@@ -15,19 +15,83 @@ export const DUCKDB_VERSION = '1.32.0';
 export const DUCKDB_MODULE = `https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@${DUCKDB_VERSION}/+esm`;
 
 /**
+ * The engine's download size once decoded, which is what the progress callback
+ * counts (the wire carries about a fifth of it, compressed). The progress total
+ * is taken from here because the server's own total is not always that size.
+ */
+export const ENGINE_BYTES = 34242586;
+
+/**
+ * Counts the bytes the engine reads from Parquet files.
+ *
+ * DuckDB reads over XMLHttpRequest inside its worker, so the page cannot see
+ * those requests. The worker is therefore started through a small wrapper that
+ * reports the size of every response to a BroadcastChannel before it loads the
+ * engine's own worker script. Nothing is fetched twice: this only measures what
+ * the engine already asked for.
+ */
+function createReadMeter() {
+  const channelName = `duckdb-reads-${Math.random().toString(36).slice(2)}`;
+  const channel = new BroadcastChannel(channelName);
+  const listeners = new Set();
+  const meter = {
+    bytes: 0,
+    onRead(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+    prelude: `const reads = new BroadcastChannel(${JSON.stringify(channelName)});
+const send = XMLHttpRequest.prototype.send;
+XMLHttpRequest.prototype.send = function (...args) {
+  const report = () => {
+    if (this.__counted) return;
+    this.__counted = true;
+    const body = this.response;
+    reads.postMessage({ url: this.responseURL, bytes: body && body.byteLength ? body.byteLength : 0 });
+  };
+  this.addEventListener('loadend', report);
+  const out = send.apply(this, args);
+  if (this.readyState === 4) report();
+  return out;
+};
+`,
+    close() { channel.close(); },
+  };
+  channel.onmessage = ({ data }) => {
+    if (!/\.parquet(\?|$)/.test(data.url)) return;
+    meter.bytes += data.bytes;
+    for (const fn of listeners) fn(meter.bytes);
+  };
+  return meter;
+}
+
+/**
  * Start the engine and open a connection with httpfs loaded.
  *
- * @param {(message: string) => void} [onStatus] progress, for the loading panel
+ * @param {(message: string) => void} [onStatus] what is happening, in plain words, for the loading panel
+ * @param {(progress: {loaded: number, total: number}) => void} [onDownload] bytes of the engine downloaded so far
  */
-export async function startDuckDB(onStatus = () => {}) {
-  onStatus(`Loading DuckDB-Wasm ${DUCKDB_VERSION} from jsDelivr...`);
+export async function startDuckDB(onStatus = () => {}, onDownload = () => {}) {
+  onStatus('Loading the DuckDB library...');
   const duckdb = await import(/* @vite-ignore */ DUCKDB_MODULE);
   const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
 
-  onStatus('Starting the engine...');
-  const worker = await duckdb.createWorker(bundle.mainWorker);
+  const reads = createReadMeter();
+  const workerSource = `${reads.prelude}importScripts(${JSON.stringify(bundle.mainWorker)});`;
+  const workerUrl = URL.createObjectURL(new Blob([workerSource], { type: 'text/javascript' }));
+  const worker = new Worker(workerUrl);
+  URL.revokeObjectURL(workerUrl);
   const db = new duckdb.AsyncDuckDB(new duckdb.ConsoleLogger(duckdb.LogLevel.ERROR), worker);
-  await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+
+  /* The engine downloads and compiles its own WebAssembly inside `instantiate`
+     and reports the bytes it has fetched: the file is downloaded once and the
+     bar is the real download. */
+  onStatus('Downloading the query engine');
+  let compiling = false;
+  await db.instantiate(bundle.mainModule, bundle.pthreadWorker, (progress) => {
+    /* Always the decoded size: `bytesTotal` is sometimes the compressed wire size, which the count then overruns. */
+    const total = Math.max(ENGINE_BYTES, progress.bytesLoaded);
+    const loaded = progress.bytesLoaded;
+    onDownload({ loaded, total });
+    if (loaded >= total && !compiling) { compiling = true; onStatus('Starting the engine'); }
+  });
 
   const connection = await db.connect();
   await connection.query('LOAD httpfs;');
@@ -41,10 +105,12 @@ export async function startDuckDB(onStatus = () => {}) {
     db,
     connection,
     worker,
+    reads,
     version: String(version),
     close() {
       try { connection.close?.(); } catch { /* already gone */ }
       try { worker.terminate?.(); } catch { /* already gone */ }
+      reads.close();
     },
   };
 }

@@ -17,6 +17,23 @@ export const GRID_FIELDS = [
   'date', 'month', 'tmax_c', 'tmin_c', 'prcp_mm', 'snow_mm',
 ];
 
+/** The columns the opening chart groups and averages: it reads these across the whole file. */
+const CHART_FIELDS = ['month', 'tmax_c', 'tmin_c'];
+
+/**
+ * How many compressed bytes of the Parquet file the opening views will read,
+ * from the file's footer: the first row group in full (the first page of rows)
+ * plus the chart's three columns across every row group (the monthly
+ * averages). It is what the "n of m MB" line counts to.
+ */
+export const readBytesSql = (url) => {
+  const list = (names) => names.map((f) => `'${f}'`).join(', ');
+  return `SELECT CAST(sum(total_compressed_size) AS BIGINT) AS bytes
+  FROM parquet_metadata('${url.replaceAll("'", "''")}')
+  WHERE path_in_schema IN (${list(CHART_FIELDS)})
+     OR (row_group_id = 0 AND path_in_schema IN (${list(GRID_FIELDS)}))`;
+};
+
 export const MONTHS = [
   '01 Jan', '02 Feb', '03 Mar', '04 Apr', '05 May', '06 Jun',
   '07 Jul', '08 Aug', '09 Sep', '10 Oct', '11 Nov', '12 Dec',
