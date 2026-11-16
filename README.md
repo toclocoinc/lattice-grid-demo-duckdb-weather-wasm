@@ -8,7 +8,7 @@ bound to the grid and computed by the engine too.
 
 Plain JavaScript: `index.html`, `main.js`, `src/*.js`, `styles.css`. No
 framework, no TypeScript, no bundler, no build step to run the page. The grid is
-loaded from cdn.latticegrid.dev (Lattice Grid 1.111.7); DuckDB-Wasm 1.32.0 from jsDelivr.
+loaded from cdn.latticegrid.dev (Lattice Grid); DuckDB-Wasm 1.32.0 from jsDelivr.
 
 ```
 npm install
