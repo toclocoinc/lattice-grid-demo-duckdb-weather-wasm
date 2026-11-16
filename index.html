@@ -10,15 +10,27 @@
     />
     <link rel="icon" href="data:," />
     <script>document.documentElement.dataset.theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";</script>
-    <!-- The calendar chart module imports the charts module by its package name. -->
-    <script type="importmap">
-      {
-        "imports": {
-          "@toclocoinc/lattice-grid/modules/charts": "https://cdn.latticegrid.dev/lattice-grid@1.111.7/modules/charts.esm.min.js?v=1.111.7-20261022"
-        }
-      }
+    <!-- The one place the grid version lives: BASE and STAMP. The import map gives the modules
+         bare names (main.js imports them; the calendar module imports the charts module by its
+         package name), and the stylesheet is added from the same BASE. -->
+    <script>
+      (function () {
+        var BASE = 'https://cdn.latticegrid.dev/lattice-grid@1.123.3/';
+        var STAMP = '?v=1.123.3-20261116';
+        var map = document.createElement('script');
+        map.type = 'importmap';
+        map.textContent = JSON.stringify({ imports: {
+          'lattice-grid': BASE + 'lattice-grid.esm.min.js' + STAMP,
+          '@toclocoinc/lattice-grid/modules/charts': BASE + 'modules/charts.esm.min.js' + STAMP,
+          'lattice-grid/modules/chart-calendar': BASE + 'modules/chart-calendar.esm.min.js' + STAMP
+        } });
+        document.head.appendChild(map);
+        var css = document.createElement('link');
+        css.rel = 'stylesheet';
+        css.href = BASE + 'lattice-grid.min.css' + STAMP;
+        document.head.appendChild(css);
+      })();
     </script>
-    <link rel="stylesheet" href="https://cdn.latticegrid.dev/lattice-grid@1.111.7/lattice-grid.min.css?v=1.111.7-20261022" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>

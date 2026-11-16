@@ -28,7 +28,7 @@ jobs:
         with:
           node-version: '22'
 
-      # The page loads the grid from cdn.latticegrid.dev (Lattice Grid 1.111.7).
+      # The page loads the grid from cdn.latticegrid.dev (Lattice Grid).
       # `npm run verify` is not run here: it needs the Parquet file, which is
       # built by `npm run build-data` and hosted at data.latticegrid.dev rather
       # than committed or published with the page.
